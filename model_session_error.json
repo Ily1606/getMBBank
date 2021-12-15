@@ -1,0 +1,9 @@
+{
+    "refNo": "371755086-2021121519273699",
+    "result": {
+        "message": "Session invalid",
+        "responseCode": "GW200",
+        "ok": false
+    },
+    "transactionHistoryList": null
+}
