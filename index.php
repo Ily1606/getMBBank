@@ -1,5 +1,5 @@
 <?php
-if(!file_exists("./config.php")){
+if (!file_exists("./config.php")) {
     die("Please config.php");
 }
 include_once("./config.php");
@@ -65,7 +65,7 @@ function createTaskCaptcha($base64_img)
         ),
     ));
 
-    $response = json_decode(curl_exec($curl),true);
+    $response = json_decode(curl_exec($curl), true);
 
     curl_close($curl);
     return $response["taskId"];
@@ -94,7 +94,7 @@ function checkProgressCaptcha($id)
         ),
     ));
 
-    $response = json_decode(curl_exec($curl),true);
+    $response = json_decode(curl_exec($curl), true);
 
     curl_close($curl);
     if ($response["status"] != "ready") {
@@ -168,6 +168,13 @@ function getTransactionHistory($session)
     curl_close($curl);
     return $response;
 }
+$data = json_decode(file_get_contents("./data.json"), true);
+if ($data) {
+    if ($data["status"] == "checking" && $data["last_excute"] + 300 < getdate()[0]) {
+        // Có cron đang thực thi, trả về dữ liệu tạm thời
+        echo json_encode($data["data"]);
+    }
+}
 //mở model_session.json, đây là mẫu dữ liệu khi login thành công, lấy các thông tin cần thiết từ mẫu này
 $session = file_get_contents("./model_session.json");
 $session = json_decode($session, true);
@@ -182,32 +189,50 @@ if ($data["result"]["responseCode"] != "00") {
 function handleGetTransactionHistory($data)
 {
     //Xử lý code trong này
-    echo json_encode($data);
+    $data_raw = json_encode($data);
+    echo $data_raw;
+    $new_data = build_saveData($data);
+    file_put_contents("./data.json",json_encode($new_data));
+}
+function build_saveData($data)
+{
+    $new_data = [];
+    $new_data["status"] = "done";
+    $new_data["last_excute"] = getdate()[0];
+    $new_data["data"] = $data;
+    return $new_data;
 }
 function handleLogin()
 {
-    global $username, $password, $number_login_failed;
+    global $username, $password, $number_login_failed, $data;
     $base64_captcha_img = getCaptcha();
     $taskID = createTaskCaptcha($base64_captcha_img);
     $captchaText = checkProgressCaptcha($taskID);
     $session_raw = login($username, $password, $captchaText);
-    $session = json_decode($session_raw,true);
+    $session = json_decode($session_raw, true);
     if ($session["result"]["responseCode"] == "00") {
         file_put_contents("./model_session.json", $session_raw);
         $data = json_decode(getTransactionHistory($session), true);
         //Xử lý tiếp
         handleGetTransactionHistory($data);
-    } else if($session["result"]["responseCode"] == "GW283") {
+    } else if ($session["result"]["responseCode"] == "GW283") {
         //Login fail ở đây
         $number_login_failed++;
+        $data["status"] = "checking";
+        $data["last_excute"] = getdate()[0];
         if ($number_login_failed <= 5) {
+            file_put_contents("./data.json",json_encode($data));
             handleLogin();
             echo "Login failed! Trying againt...";
         } else {
+            $data["status"] = "failed";
+            file_put_contents("./data.json",json_encode($data));
             echo "Login failed!";
         }
-    }
-    else{
+    } else {
+        $data["status"] = "error_server";
+        $data["last_excute"] = getdate()[0];
+        file_put_contents("./data.json",json_encode($data));
         echo "Some thing went wrong";
     }
 }
