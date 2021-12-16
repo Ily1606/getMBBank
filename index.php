@@ -136,7 +136,8 @@ function getCaptcha()
 function getTransactionHistory($session)
 {
     $curl = curl_init();
-
+    $time_begin = date('d/m/Y', strtotime("-1 day"));
+    $time_end = date("d/m/Y");
     curl_setopt_array($curl, array(
         CURLOPT_URL => 'https://online.mbbank.com.vn/retail_web/common/getTransactionHistory',
         CURLOPT_RETURNTRANSFER => true,
@@ -148,8 +149,8 @@ function getTransactionHistory($session)
         CURLOPT_CUSTOMREQUEST => 'POST',
         CURLOPT_POSTFIELDS => '{
             "accountNo": "' . $session["cust"]["defaultAccount"]["acctNo"] . '",
-            "fromDate": "08/12/2021",
-            "toDate": "15/12/2021",
+            "fromDate": "'.$time_begin.'",
+            "toDate": "'.$time_end.'",
             "historyNumber": "",
             "historyType": "DATE_RANGE",
             "type": "ACCOUNT",
@@ -171,6 +172,7 @@ function getTransactionHistory($session)
 $data = json_decode(file_get_contents("./data.json"), true);
 if ($data["status"] == "checking" && getdate()[0] - $data["last_excute"] < 300) {
     // Có cron đang thực thi, trả về dữ liệu tạm thời
+    insertToDB($data["data"]);
     echo json_encode($data["data"]);
     echo "Load from cache!";
 } else {
@@ -194,10 +196,24 @@ if ($data["status"] == "checking" && getdate()[0] - $data["last_excute"] < 300) 
 function handleGetTransactionHistory($data)
 {
     //Xử lý code trong này
+    insertToDB($data);
     $data_raw = json_encode($data);
     echo $data_raw;
     $new_data = build_saveData($data);
     file_put_contents("./data.json", json_encode($new_data));
+}
+function insertToDB($data){
+    //$conn = new Mysql()
+    foreach ($data["transactionHistoryList"] as $value) {
+        $description = mb_strtolower($value["description"]);
+        if(strpos($description,"tbolach5")){
+            $username = explode('tbolach5 ',$description)[1];
+            //echo $username;
+            $money = $value["creditAmount"];
+            $time_exchange = $value["transactionDate"];
+            echo "$username-$money-$time_exchange";
+        }
+    }
 }
 function build_saveData($data)
 {
