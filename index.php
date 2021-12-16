@@ -169,22 +169,27 @@ function getTransactionHistory($session)
     return $response;
 }
 $data = json_decode(file_get_contents("./data.json"), true);
-if ($data) {
-    if ($data["status"] == "checking" && $data["last_excute"] + 300 < getdate()[0]) {
-        // Có cron đang thực thi, trả về dữ liệu tạm thời
-        echo json_encode($data["data"]);
-    }
-}
-//mở model_session.json, đây là mẫu dữ liệu khi login thành công, lấy các thông tin cần thiết từ mẫu này
-$session = file_get_contents("./model_session.json");
-$session = json_decode($session, true);
-$data = json_decode(getTransactionHistory($session), true);
-$number_login_failed = 0;
-if ($data["result"]["responseCode"] != "00") {
-    //Session sai, thực hiện lại đăng nhập, và ghi session mới vào file session
-    handleLogin();
+if ($data["status"] == "checking" && getdate()[0] - $data["last_excute"] < 300) {
+    // Có cron đang thực thi, trả về dữ liệu tạm thời
+    echo json_encode($data["data"]);
+    echo "Load from cache!";
 } else {
-    handleGetTransactionHistory($data);
+    $data["status"] = "checking";
+    $data["last_excute"] = getdate()[0];
+    file_put_contents("./data.json", json_encode($data));
+    //mở model_session.json, đây là mẫu dữ liệu khi login thành công, lấy các thông tin cần thiết từ mẫu này
+    $session = file_get_contents("./model_session.json");
+    $session = json_decode($session, true);
+    $datatrans = json_decode(getTransactionHistory($session), true);
+    $number_login_failed = 0;
+    if ($datatrans["result"]["responseCode"] != "00") {
+        //Session sai, thực hiện lại đăng nhập, và ghi session mới vào file session
+        $data["status"] = "checking";
+        file_put_contents("./data.json", json_encode($data));
+        handleLogin();
+    } else {
+        handleGetTransactionHistory($datatrans);
+    }
 }
 function handleGetTransactionHistory($data)
 {
@@ -192,7 +197,7 @@ function handleGetTransactionHistory($data)
     $data_raw = json_encode($data);
     echo $data_raw;
     $new_data = build_saveData($data);
-    file_put_contents("./data.json",json_encode($new_data));
+    file_put_contents("./data.json", json_encode($new_data));
 }
 function build_saveData($data)
 {
@@ -212,27 +217,25 @@ function handleLogin()
     $session = json_decode($session_raw, true);
     if ($session["result"]["responseCode"] == "00") {
         file_put_contents("./model_session.json", $session_raw);
-        $data = json_decode(getTransactionHistory($session), true);
+        $datatrans = json_decode(getTransactionHistory($session), true);
         //Xử lý tiếp
-        handleGetTransactionHistory($data);
+        handleGetTransactionHistory($datatrans);
     } else if ($session["result"]["responseCode"] == "GW283") {
         //Login fail ở đây
         $number_login_failed++;
-        $data["status"] = "checking";
-        $data["last_excute"] = getdate()[0];
         if ($number_login_failed <= 5) {
-            file_put_contents("./data.json",json_encode($data));
             handleLogin();
             echo "Login failed! Trying againt...";
         } else {
             $data["status"] = "failed";
-            file_put_contents("./data.json",json_encode($data));
+            $new_data["last_excute"] = getdate()[0];
+            file_put_contents("./data.json", json_encode($data));
             echo "Login failed!";
         }
     } else {
         $data["status"] = "error_server";
         $data["last_excute"] = getdate()[0];
-        file_put_contents("./data.json",json_encode($data));
+        file_put_contents("./data.json", json_encode($data));
         echo "Some thing went wrong";
     }
 }
